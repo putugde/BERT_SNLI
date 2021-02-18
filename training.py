@@ -24,15 +24,38 @@ import jsonlines
 
 from utils import openData, removeMinVal
 
+import logging
+
+logging.basicConfig(filename="log/training.log", level=logging.DEBUG)
+
 epochs = 10
 MAX_LENGTH = 128
 batch_size = 512
 SEED_VAL = 10
+LEARNING_RATE = 15e-6
+EPS = 1e-8
+BERT_MODEL = 'microsoft/deberta-base'
+# BERT_MODEL = 'roberta-base'
+# BERT_MODEL = 'distilbert-base-uncased'
+# BERT_MODEL = 'bert-base-uncased'
+# BERT_MODEL = 'albert-base-v2'
+
 label_dict = {
     'entailment':0,
     'neutral':1,
     'contradiction':2
 }
+
+logging.info(' ######### Training Started! #########')
+
+def initial_log():
+    logging.info('\n ** Training Configuration **')
+    logging.info(f'Model            : {BERT_MODEL}')
+    logging.info(f'Epoch            : {epochs}')
+    logging.info(f'Batch Size       : {batch_size}')
+    logging.info(f'Learning Rate    : {LEARNING_RATE}')
+    logging.info(f'EPS              : {EPS}')
+    logging.info(f'Seed Value       : {SEED_VAL}\n')
 
 def f1_score_func(preds, labels):
     preds_flat = np.argmax(preds, axis=1).flatten()
@@ -79,7 +102,29 @@ def evaluate(model, device, dataloader_val, PARALLEL_GPU=False):
             
     return loss_val_avg, predictions, true_vals
 
+def accuracy_per_class(preds, labels):
+    label_dict_inverse = {v: k for k, v in label_dict.items()}
+    
+    preds_flat = np.argmax(preds, axis=1).flatten()
+    labels_flat = labels.flatten()
+    total_pred = 0
+    total_true = 0
+    total_acc = 0
+
+    for label in np.unique(labels_flat):
+        y_preds = preds_flat[labels_flat==label]
+        y_true = labels_flat[labels_flat==label]
+        logging.info(f'Class: {label_dict_inverse[label]}')
+        logging.info(f'Accuracy: {len(y_preds[y_preds==label])}/{len(y_true)} = {len(y_preds[y_preds==label])/len(y_true)}\n')
+        total_pred += len(y_preds[y_preds==label])
+        total_true += len(y_true)
+        total_acc += (total_pred/total_true)
+    
+    logging.info(f'Unweighted accuracy : {total_pred}/{total_true} = {(total_pred/total_true)}')
+    logging.info(f'Weighted accuracy (equal weight): {total_acc/len(label_dict)} \n')
+
 def main():
+    initial_log()
     # Check GPU Availability
     if torch.cuda.is_available():
         device = torch.device('cuda:0')
@@ -115,12 +160,6 @@ def main():
 
     print('#### Download Tokenizer & Tokenizing ####')
 
-    BERT_MODEL = 'microsoft/deberta-base'
-    # BERT_MODEL = 'roberta-base'
-    # BERT_MODEL = 'distilbert-base-uncased'
-    # BERT_MODEL = 'bert-base-uncased'
-    # BERT_MODEL = 'albert-base-v2'
-
     tokenizer = DebertaTokenizer.from_pretrained(BERT_MODEL, do_lower_case=True)
 
     print('Encoding training data')
@@ -135,15 +174,15 @@ def main():
 
     labels_val = torch.tensor(df_val.label.values)
 
-    # print('Encoding test data')
-    # encode_test = tokenizer(df_test.premise.tolist(), df_test.hypothesis.tolist(), 
-    #                     return_tensors='pt',padding='max_length', max_length = MAX_LENGTH)
+    print('Encoding test data')
+    encode_test = tokenizer(df_test.premise.tolist(), df_test.hypothesis.tolist(), 
+                        return_tensors='pt',padding='max_length', max_length = MAX_LENGTH)
 
     labels_test = torch.tensor(df_test.label.values)
 
     dataset_train = TensorDataset(encode_train['input_ids'], encode_train['attention_mask'], labels_train)
     dataset_val = TensorDataset(encode_val['input_ids'], encode_val['attention_mask'], labels_val)
-    # dataset_test = TensorDataset(encode_test['input_ids'], encode_test['attention_mask'], labels_test)
+    dataset_test = TensorDataset(encode_test['input_ids'], encode_test['attention_mask'], labels_test)
 
     print('#### Downloading Pretrained Model ####')
     model = DebertaForSequenceClassification.from_pretrained(BERT_MODEL,
@@ -159,10 +198,14 @@ def main():
                                     sampler=SequentialSampler(dataset_val), 
                                     batch_size=batch_size)
 
+    dataloader_test = DataLoader(dataset_test, 
+                                   sampler=SequentialSampler(dataset_test), 
+                                   batch_size=batch_size)
+
     print('#### Setting Up Optimizer ####')
     optimizer = AdamW(model.parameters(),
-                    lr=1e-5, 
-                    eps=1e-8)
+                    lr=LEARNING_RATE, 
+                    eps=EPS)
 
     scheduler = get_linear_schedule_with_warmup(optimizer, 
                                                 num_warmup_steps=0,
@@ -223,19 +266,36 @@ def main():
             
             progress_bar.set_postfix({'training_loss': '{:.3f}'.format(loss.item()/len(batch))})
             
-            
-        torch.save(model.state_dict(), f'./models/deberta/finetuned_model_epoch_{epoch}.model')
+        # Save model every epoch
+        # torch.save(model.state_dict(), f'./models/deberta2/finetuned_model_epoch_{epoch}.model')
             
         tqdm.write(f'\nEpoch {epoch}')
+        logging.info(f'\n ------ Epoch {epoch} --------')
         
-        # dataloader_train
         loss_train_avg = loss_train_total/len(dataloader_train)          
         tqdm.write(f'Training loss: {loss_train_avg}')
+        logging.info(f'Training loss: {loss_train_avg}')
         
         val_loss, predictions, true_vals = evaluate(model, device, dataloader_validation, PARALLEL_GPU)
         val_f1 = f1_score_func(predictions, true_vals)
         tqdm.write(f'Validation loss: {val_loss}')
         tqdm.write(f'F1 Score (Weighted): {val_f1}')
+        logging.info(f'Validation loss: {val_loss}')
+        logging.info(f'F1 Score (Weighted): {val_f1}')
+
+        # Evaluate per epoch
+        # Evaluate validation data
+        logging.info(f' -- Validation Data -- ')
+        _, predictions, true_vals = evaluate(model, device, dataloader_validation, PARALLEL_GPU)
+        accuracy_per_class(predictions, true_vals)
+
+        logging.info(f' -- Test Data -- ')
+        # Evaluate test data
+        _, predictions, true_vals = evaluate(model, device, dataloader_test, PARALLEL_GPU)
+        accuracy_per_class(predictions, true_vals)
+
+    # Save final epoch model
+    torch.save(model.state_dict(), f'./models/deberta2/finetuned_model_epoch_{epochs}.model')
 
 if __name__ == '__main__':
     main()
