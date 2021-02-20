@@ -26,19 +26,20 @@ from utils import openData, removeMinVal
 
 import logging
 
-logging.basicConfig(filename="log/training.log", level=logging.DEBUG)
-
 epochs = 10
 MAX_LENGTH = 128
 batch_size = 512
 SEED_VAL = 10
-LEARNING_RATE = 15e-6
+LEARNING_RATE = 1e-5
 EPS = 1e-8
-BERT_MODEL = 'microsoft/deberta-base'
-# BERT_MODEL = 'roberta-base'
+
+# BERT_MODEL = 'microsoft/deberta-base'
+BERT_MODEL = 'roberta-base'
 # BERT_MODEL = 'distilbert-base-uncased'
 # BERT_MODEL = 'bert-base-uncased'
 # BERT_MODEL = 'albert-base-v2'
+
+logging.basicConfig(filename=f'log/training-{BERT_MODEL}-{epochs}-{LEARNING_RATE}.log', level=logging.INFO)
 
 label_dict = {
     'entailment':0,
@@ -160,7 +161,7 @@ def main():
 
     print('#### Download Tokenizer & Tokenizing ####')
 
-    tokenizer = DebertaTokenizer.from_pretrained(BERT_MODEL, do_lower_case=True)
+    tokenizer = RobertaTokenizer.from_pretrained(BERT_MODEL, do_lower_case=True)
 
     print('Encoding training data')
     encode_train = tokenizer(df_train.premise.tolist(), df_train.hypothesis.tolist(), 
@@ -185,7 +186,7 @@ def main():
     dataset_test = TensorDataset(encode_test['input_ids'], encode_test['attention_mask'], labels_test)
 
     print('#### Downloading Pretrained Model ####')
-    model = DebertaForSequenceClassification.from_pretrained(BERT_MODEL,
+    model = RobertaForSequenceClassification.from_pretrained(BERT_MODEL,
                                                         num_labels=len(label_dict),
                                                         output_attentions=False,
                                                         output_hidden_states=False)
@@ -270,7 +271,7 @@ def main():
         # torch.save(model.state_dict(), f'./models/deberta2/finetuned_model_epoch_{epoch}.model')
             
         tqdm.write(f'\nEpoch {epoch}')
-        logging.info(f'\n ------ Epoch {epoch} --------')
+        logging.info(f'\n -------- Epoch {epoch} ---------- \n')
         
         loss_train_avg = loss_train_total/len(dataloader_train)          
         tqdm.write(f'Training loss: {loss_train_avg}')
@@ -281,15 +282,15 @@ def main():
         tqdm.write(f'Validation loss: {val_loss}')
         tqdm.write(f'F1 Score (Weighted): {val_f1}')
         logging.info(f'Validation loss: {val_loss}')
-        logging.info(f'F1 Score (Weighted): {val_f1}')
+        logging.info(f'F1 Score (Weighted): {val_f1} \n \n')
 
         # Evaluate per epoch
         # Evaluate validation data
-        logging.info(f' -- Validation Data -- ')
+        logging.info(f' -- Validation Data -- \n')
         _, predictions, true_vals = evaluate(model, device, dataloader_validation, PARALLEL_GPU)
         accuracy_per_class(predictions, true_vals)
 
-        logging.info(f' -- Test Data -- ')
+        logging.info(f' -- Test Data -- \n')
         # Evaluate test data
         _, predictions, true_vals = evaluate(model, device, dataloader_test, PARALLEL_GPU)
         accuracy_per_class(predictions, true_vals)
