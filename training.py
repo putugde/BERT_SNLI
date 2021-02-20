@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 import torch.nn as nn
 
 from transformers import AdamW, get_linear_schedule_with_warmup
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, classification_report
 
 import random
 
@@ -108,6 +108,13 @@ def accuracy_per_class(preds, labels):
     
     preds_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
+
+    # Hardcoded label
+    target_names = ['entailment', 'neutral', 'contradiction']
+    
+    cr = classification_report(labels_flat, preds_flat, target_names=target_names)
+    logging.info(f'\n *** CLASSIFICATION REPORT ***\n\n{cr}\n')
+
     total_pred = 0
     total_true = 0
     total_acc = 0
