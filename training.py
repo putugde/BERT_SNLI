@@ -121,8 +121,8 @@ def accuracy_per_class(preds, labels):
         total_true += len(y_true)
         total_acc += (total_pred/total_true)
     
-    logging.info(f'Unweighted accuracy : {total_pred}/{total_true} = {(total_pred/total_true)}')
-    logging.info(f'Weighted accuracy (equal weight): {total_acc/len(label_dict)} \n')
+    logging.info(f'Accuracy : {total_pred}/{total_true} = {(total_pred/total_true)}')
+    logging.info(f'Accuracy (equal weight each class): {total_acc/len(label_dict)} \n')
 
 def main():
     initial_log()
