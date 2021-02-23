@@ -30,16 +30,17 @@ epochs = 10
 MAX_LENGTH = 128
 batch_size = 512
 SEED_VAL = 10
-LEARNING_RATE = 1e-5
+LEARNING_RATE = 2e-5
 EPS = 1e-8
 
 # BERT_MODEL = 'microsoft/deberta-base'
-BERT_MODEL = 'roberta-base'
+BERT_MODEL = 'roberta-large'
 # BERT_MODEL = 'distilbert-base-uncased'
 # BERT_MODEL = 'bert-base-uncased'
 # BERT_MODEL = 'albert-base-v2'
 
-logging.basicConfig(filename=f'log/training-{BERT_MODEL}-{epochs}-{LEARNING_RATE}.log', level=logging.INFO)
+LOG_PATH = 'log/training-'+BERT_MODEL+'-'+str(epochs)+'-'+str(LEARNING_RATE)+'.log'
+logging.basicConfig(filename=LOG_PATH, level=logging.INFO)
 
 label_dict = {
     'entailment':0,
@@ -112,7 +113,7 @@ def accuracy_per_class(preds, labels):
     # Hardcoded label
     target_names = ['entailment', 'neutral', 'contradiction']
     
-    cr = classification_report(labels_flat, preds_flat, target_names=target_names)
+    cr = classification_report(labels_flat, preds_flat, target_names=target_names, digits=4)
     logging.info(f'\n *** CLASSIFICATION REPORT ***\n\n{cr}\n')
 
     total_pred = 0
@@ -129,7 +130,7 @@ def accuracy_per_class(preds, labels):
         total_acc += (total_pred/total_true)
     
     logging.info(f'Accuracy : {total_pred}/{total_true} = {(total_pred/total_true)}')
-    logging.info(f'Accuracy (equal weight each class): {total_acc/len(label_dict)} \n')
+    # logging.info(f'Accuracy (equal weight each class): {total_acc/len(label_dict)} \n')
 
 def main():
     initial_log()
@@ -233,6 +234,8 @@ def main():
     np.random.seed(SEED_VAL)
     torch.manual_seed(SEED_VAL)
     torch.cuda.manual_seed_all(SEED_VAL)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
     print('#### Training Started! ####')
     for epoch in tqdm(range(1, epochs+1)):
@@ -303,7 +306,7 @@ def main():
         accuracy_per_class(predictions, true_vals)
 
     # Save final epoch model
-    torch.save(model.state_dict(), f'./models/deberta2/finetuned_model_epoch_{epochs}.model')
+    torch.save(model.state_dict(), f'./models/roberta-large/finetuned_model_epoch_{epochs}.model')
 
 if __name__ == '__main__':
     main()
